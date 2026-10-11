@@ -1,7 +1,8 @@
 # Hybrid Cloud Connectivity Lab - On-Prem to Azure Site-to-Site VPN + Automation
 
-> **Status: work in progress.** Phase 1 (on-prem network) is complete. Azure, the IPsec tunnel
-> and Python/Netmiko automation follow in the next phases - see [Roadmap](#roadmap).
+> **Status: work in progress.** Phase 1 (on-prem network) is complete and Zabbix monitoring of the
+> on-prem devices is up. Azure, the IPsec tunnel and Python/Netmiko automation follow in the next
+> phases - see [Roadmap](#roadmap).
 
 ## Scenario
 
@@ -25,6 +26,7 @@ automation**.
 | SW1 | Cisco IOL L2 15.1 | Access switch, management on Vlan1 |
 | PC1 | VPCS | Office user for end-to-end tests |
 | AUTO-HOST | Ubuntu 22.04 | Automation host - Python, Netmiko, SSH |
+| ZABBIX | Ubuntu 22.04 | Zabbix 7.0 LTS monitoring server (added in Phase Z) |
 | INTERNET | EVE-NG Management(Cloud0) | Internet access through the host (VMware NAT) |
 
 ## IP Addressing Plan
@@ -36,6 +38,7 @@ automation**.
 | SW1 Vlan1 (management) | 192.168.10.2 | |
 | PC1 | 192.168.10.11 | |
 | AUTO-HOST | 192.168.10.20 | Static (netplan) |
+| ZABBIX | 192.168.10.30 | Static (netplan), SW1 Et0/3 |
 | R1 Gi0/0 (WAN) | DHCP | Private address behind NAT |
 | Azure VNet *(Phase 2)* | 10.10.0.0/16 | Workload subnet 10.10.1.0/24, GatewaySubnet 10.10.255.0/27 |
 
@@ -52,15 +55,30 @@ automation**.
 - `show ip nat translations` on R1 shows LAN hosts translated to the WAN address
 - `ssh admin@192.168.10.1` and `ssh admin@192.168.10.2` from AUTO-HOST succeed
 
+## Phase Z - Monitoring with Zabbix
+
+A Zabbix 7.0 LTS server monitors the on-prem network:
+
+- **R1 and SW1 over SNMPv3** (authPriv: SHA + AES), read-only view, ACL allowing only the Zabbix server
+- **AUTO-HOST with Zabbix agent 2**, restricted to the Zabbix server
+- Built-in templates (Cisco IOS by SNMP, Linux by Zabbix agent) with automatic interface discovery
+- All hosts available in Zabbix; an agent outage on AUTO-HOST was detected and auto-resolved during setup
+
+Still to do in this phase: a custom internet-reachability check, planned alert tests (switch port
+down, WAN link down, host down) and screenshots. Details in
+[configs/zabbix-monitoring.md](configs/zabbix-monitoring.md).
+
 ## Troubleshooting Highlights
 
-Five real issues so far, each with symptom, investigation, root cause and fix in
+Nine real issues so far, each with symptom, investigation, root cause and fix in
 [docs/troubleshooting-log.md](docs/troubleshooting-log.md). Two favourites:
 
 - **No DHCP address on the WAN interface** - a static IP + ping test proved the fault was Layer 2,
   not DHCP: the EVE-NG cloud object had the wrong network type.
 - **Switch ignores its default gateway** - the IOL L2 image routes by default, and a routing device
   ignores `ip default-gateway`. Fixed with `no ip routing`.
+- **Monitoring agent rejects the server** - "connection reset" instead of "refused" meant the agent was
+  running but rejecting the server; its log named the exact allowed-hosts mismatch.
 
 Design reasoning is in [docs/design-decisions.md](docs/design-decisions.md).
 
@@ -74,7 +92,8 @@ hybrid-cloud-connectivity-lab/
 ├── configs/
 │   ├── R1.cfg
 │   ├── SW1.cfg
-│   └── end-hosts.md            (PC1, AUTO-HOST netplan and SSH client config)
+│   ├── end-hosts.md            (PC1, AUTO-HOST netplan and SSH client config)
+│   └── zabbix-monitoring.md    (Zabbix server, SNMPv3, agent, hosts)
 └── docs/
     ├── troubleshooting-log.md
     └── design-decisions.md
@@ -86,6 +105,7 @@ hybrid-cloud-connectivity-lab/
 |---|---|---|
 | 0 | Environment preparation (EVE-NG, images, automation host) | Done |
 | 1 | On-prem network - R1, SW1, PC1, AUTO-HOST | Done |
+| Z | Monitoring - Zabbix 7.0 LTS, SNMPv3, agent 2 | In progress |
 | 2 | Azure foundation - VNet, subnets, NSG, VM (Azure CLI) | Planned |
 | 3 | Route-based IPsec IKEv2 tunnel (VTI, NAT-T) to Azure VPN Gateway | Planned |
 | 4 | Verification and failure testing | Planned |
@@ -101,4 +121,5 @@ hybrid-cloud-connectivity-lab/
 | Platform | EVE-NG on VMware Workstation |
 | Images | Cisco IOSv 15.9, Cisco IOL L2 15.1, VPCS, Ubuntu Server 22.04 |
 | Cloud *(Phase 2+)* | Microsoft Azure |
+| Monitoring | Zabbix 7.0 LTS, MariaDB, SNMPv3 |
 | Automation *(Phase 5)* | Python 3.10, Netmiko |

@@ -44,3 +44,33 @@ the Ubuntu host globally, `~/.ssh/config` re-enables them only for `192.168.10.*
 **Automation host disk grown on the node overlay only.**
 The node's own `virtioa.qcow2` overlay was resized; the shared base image stays at its original
 size for other labs (Issue #4).
+
+## Phase Z - Monitoring with Zabbix
+
+**Dedicated Zabbix node, separate from the automation host.**
+Automation and monitoring are different roles; if one breaks, the other keeps working.
+
+**SNMPv3 authPriv instead of v2c.**
+v2c sends the community string in clear text and encrypts nothing. v3 adds a user, SHA
+authentication and AES encryption.
+
+**Read-only SNMP, restricted by ACL.**
+The SNMP group has only a read view (no write view, so configuration cannot be changed over SNMP),
+and `ACL-SNMP` allows queries only from the Zabbix server.
+
+**Polling first, traps later.**
+Zabbix polls devices on a schedule. SNMP traps need an extra service (`snmptrapd`) and are on the
+improvement list.
+
+**Web interface through a static PAT on R1.**
+The lab host only sees R1's WAN address. Side effect, kept deliberately as a lesson: if the WAN link
+fails, access to the monitoring interface fails with it - the reason production networks use
+out-of-band management.
+
+**Built-in templates, avoiding overlaps.**
+"Cisco IOS by SNMP" and "Linux by Zabbix agent" provide interface, CPU, memory and availability
+metrics automatically. The Cisco template already includes ICMP checks, so the separate ICMP Ping
+template is applied only to PC1.
+
+**Zabbix 7.0 LTS.**
+Long-term support release.

@@ -9,6 +9,10 @@ Real issues hit while building this lab, recorded as they happened.
 | 3 | 1 | SW1 can reach R1 but not the internet | Layer 3 |
 | 4 | 1 | Automation host root disk almost full | Host / storage |
 | 5 | 1 | SSH from Ubuntu 22.04 to Cisco devices fails algorithm negotiation | Management plane |
+| 6 | Z | New Zabbix node cannot reach its gateway | Layer 2 |
+| 7 | Z | Zabbix refuses two templates on the same host | Monitoring config |
+| 8 | Z | Zabbix server fails to start | Service / config |
+| 9 | Z | Zabbix agent rejects the server | Monitoring / access control |
 
 ---
 
@@ -63,3 +67,45 @@ Real issues hit while building this lab, recorded as they happened.
 - **Root cause:** OpenSSH on Ubuntu 22.04 disables SHA1-based key exchange, `ssh-rsa` host keys and CBC ciphers by default. The older Cisco images only offer those. The two devices failed at different stages because the newer IOSv supports modern ciphers and the older IOL does not.
 - **Fix:** A client-side `~/.ssh/config` block scoped to `Host 192.168.10.*` that re-enables `diffie-hellman-group14-sha1` (the stronger of the offered KEX methods), `ssh-rsa` host keys and `aes256-cbc` (the strongest offered cipher). Legacy algorithms are allowed only for the lab subnet; every other host keeps OpenSSH's strict defaults.
 - **Lesson learned:** Read the "Their offer" list - it tells you exactly which side lacks what. The `+` syntax adds an algorithm without removing the modern ones, so SSH still picks the best common option per device.
+
+---
+
+### Issue #6 - New Zabbix node cannot reach its gateway
+
+- **Phase:** Z (monitoring)
+- **Symptom:** From the new ZABBIX node, `ping 192.168.10.1` returned "Destination Host Unreachable"; DNS resolution also failed.
+- **Root cause:** Two things at once: SW1 Et0/3 was still administratively down (it had been shut as an unused port in Phase 1), and R1 itself was not running in EVE-NG.
+- **Fix:** Configured Et0/3 as a host port with `no shutdown`, and started R1.
+- **Lesson learned:** "Destination Host Unreachable" means no ARP reply - a Layer 2 problem: a port that is down, a cable, or the device on the other side not running. Check the obvious first.
+
+---
+
+### Issue #7 - Zabbix refuses two templates on the same host
+
+- **Phase:** Z
+- **Symptom:** Adding R1 with the templates "Cisco IOS by SNMP" and "ICMP Ping" failed: "Cannot inherit items with key icmpping of both templates, because the key must be unique on host R1."
+- **Root cause:** The Cisco IOS template already includes ICMP ping items, so the ICMP Ping template would duplicate the same item keys.
+- **Fix:** Used only "Cisco IOS by SNMP" on R1 and SW1; the ICMP Ping template stays only on PC1.
+- **Lesson learned:** Item keys must be unique per host - check what a template already contains before stacking templates.
+
+---
+
+### Issue #8 - Zabbix server fails to start
+
+- **Phase:** Z
+- **Symptom:** `zabbix-server` stuck in "activating (auto-restart)" with exit code 1; no log file was created; the web interface showed "Zabbix server is not running".
+- **Investigation:** `zabbix_server -c /etc/zabbix/zabbix_server.conf -T` (config test) reported: unknown parameter "Password" at line 129.
+- **Root cause:** A malformed line (`Password=...` instead of `DBPassword=...`) left over from editing the database password, which also left the server without a valid DB password.
+- **Fix:** Removed the bad line, added a correct `DBPassword=` line, aligned the database user's password with `ALTER USER`, validated with `-T` and restarted the service.
+- **Lesson learned:** When a service dies before it can write its own log, test its configuration directly - `-T` pointed to the exact line.
+
+---
+
+### Issue #9 - Zabbix agent rejects the server
+
+- **Phase:** Z
+- **Symptom:** AUTO-HOST agent availability went from "Connection refused" (agent not running yet) to "Connection reset by peer"; Zabbix opened "Linux: Zabbix agent is not available".
+- **Investigation:** `/var/log/zabbix/zabbix_agent2.log`: connection from "192.168.10.30" rejected, allowed hosts: "127.0.0.1".
+- **Root cause:** The agent configuration edits had first been run on the wrong node (the Zabbix server itself), so AUTO-HOST still had the default `Server=127.0.0.1`. The edits were reverted on the server and applied on AUTO-HOST.
+- **Fix:** Set `Server` and `ServerActive` to 192.168.10.30 and `Hostname=AUTO-HOST` on AUTO-HOST and restarted the agent; the Zabbix problem resolved automatically.
+- **Lesson learned:** "Connection refused" and "connection reset" mean different things - nothing is listening vs. the listener is rejecting you. The agent log names the reason.
