@@ -13,6 +13,7 @@ Real issues hit while building this lab, recorded as they happened.
 | 7 | Z | Zabbix refuses two templates on the same host | Monitoring config |
 | 8 | Z | Zabbix server fails to start | Service / config |
 | 9 | Z | Zabbix agent rejects the server | Monitoring / access control |
+| 10 | Z | Shut-down switch port disappears from monitoring | Monitoring config |
 
 ---
 
@@ -109,3 +110,13 @@ Real issues hit while building this lab, recorded as they happened.
 - **Root cause:** The agent configuration edits had first been run on the wrong node (the Zabbix server itself), so AUTO-HOST still had the default `Server=127.0.0.1`. The edits were reverted on the server and applied on AUTO-HOST.
 - **Fix:** Set `Server` and `ServerActive` to 192.168.10.30 and `Hostname=AUTO-HOST` on AUTO-HOST and restarted the agent; the Zabbix problem resolved automatically.
 - **Lesson learned:** "Connection refused" and "connection reset" mean different things - nothing is listening vs. the listener is rejecting you. The agent log names the reason.
+
+---
+
+### Issue #10 - Shut-down switch port disappears from monitoring
+
+- **Phase:** Z (alert testing)
+- **Symptom:** After `shutdown` on SW1 Et0/1, the port's items vanished from Latest data and at first no "Link down" problem appeared.
+- **Root cause:** The "Cisco IOS by SNMP" template's interface discovery filters out administratively down interfaces, so deliberately disabled ports don't create noise. Et0/1 had been rediscovered while it was shut, so it was no longer monitored.
+- **Fix:** Brought the port up, ran "Network interfaces discovery" manually, waited until Operational status showed "up", then shut it again. Zabbix then raised and auto-resolved "Link down" on every repetition.
+- **Lesson learned:** Know how a template decides what to monitor before relying on it for alerts; a test only proves something if the monitored state was "up" first.

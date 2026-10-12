@@ -2,9 +2,8 @@
 
 Configuration added on top of Phase 1 to bring the on-prem network under Zabbix monitoring.
 
-> Secrets are replaced with `<REDACTED-FOR-PUBLIC-REPO>`. `configs/R1.cfg` and `configs/SW1.cfg`
-> still show the Phase 1 state; full running-configs including these changes will replace them
-> once the monitoring phase is finished.
+> Secrets are replaced with `<REDACTED-FOR-PUBLIC-REPO>`. Full running-configs including these
+> changes are in `configs/R1.cfg` and `configs/SW1.cfg`.
 
 ## New node: ZABBIX (Ubuntu 22.04)
 
@@ -111,3 +110,39 @@ Hostname=AUTO-HOST
 
 "Cisco IOS by SNMP" already contains ICMP ping items, so the separate ICMP Ping template is used
 only for PC1 (see Issue #7).
+
+## Custom check - internet reachability
+
+On host R1, a simple check run by the Zabbix server itself (fping):
+
+| Item | Value |
+|---|---|
+| Name | Internet uplink: reachability of 8.8.8.8 |
+| Type | Simple check |
+| Key | `icmpping[8.8.8.8,3]` |
+| Update interval | 30s |
+
+Trigger **"Internet unreachable from on-prem site"** (High):
+
+```
+max(/R1/icmpping[8.8.8.8,3],#3)=0
+```
+
+The problem opens only when the last three checks all fail, so a single lost packet does not
+raise a false alert.
+
+## Alert tests
+
+| Test | Action | Result | Screenshot |
+|---|---|---|---|
+| 1 - user port down | `shutdown` on SW1 Et0/1, then `no shutdown` (repeated 3 times) | "Interface Et0/1: Link down" opened and auto-resolved each time, after 3m44s to 4m59s | [test1](../screenshots/test1-link-down-history.png) |
+| 2 - WAN link down | `shutdown` on R1 Gi0/0 for about 5 minutes | "Gi0/0: Link down" at 12:03:44, then the custom "Internet unreachable" 47 s later; both auto-resolved (6m and 5m30s) | [test2](../screenshots/test2-wan-resolved.png) |
+| 3 - server down | Stopped the AUTO-HOST node, then started it | "Zabbix agent is not available" (3m) followed by "host has been restarted"; both auto-resolved | [test3](../screenshots/test3-host-down-resolved.png) |
+
+Observations:
+
+- The Cisco IOS template excludes administratively down interfaces from discovery, so a port has to
+  be up and discovered before a shutdown raises "Link down" (Issue #10).
+- During Test 2 the Zabbix web interface was unreachable, because it is accessed through a static PAT
+  on the same WAN link. Zabbix kept collecting data and recorded the full outage - a practical case
+  for out-of-band management.

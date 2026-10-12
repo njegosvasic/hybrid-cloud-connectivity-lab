@@ -1,7 +1,7 @@
 # Hybrid Cloud Connectivity Lab - On-Prem to Azure Site-to-Site VPN + Automation
 
-> **Status: work in progress.** Phase 1 (on-prem network) is complete and Zabbix monitoring of the
-> on-prem devices is up. Azure, the IPsec tunnel and Python/Netmiko automation follow in the next
+> **Status: work in progress.** Phase 1 (on-prem network) and Zabbix monitoring of the on-prem
+> devices (including alert tests) are complete. Azure, the IPsec tunnel and Python/Netmiko automation follow in the next
 > phases - see [Roadmap](#roadmap).
 
 ## Scenario
@@ -62,15 +62,25 @@ A Zabbix 7.0 LTS server monitors the on-prem network:
 - **R1 and SW1 over SNMPv3** (authPriv: SHA + AES), read-only view, ACL allowing only the Zabbix server
 - **AUTO-HOST with Zabbix agent 2**, restricted to the Zabbix server
 - Built-in templates (Cisco IOS by SNMP, Linux by Zabbix agent) with automatic interface discovery
-- All hosts available in Zabbix; an agent outage on AUTO-HOST was detected and auto-resolved during setup
+- A custom **internet-reachability check** with its own trigger (3 failed pings before alerting)
 
-Still to do in this phase: a custom internet-reachability check, planned alert tests (switch port
-down, WAN link down, host down) and screenshots. Details in
-[configs/zabbix-monitoring.md](configs/zabbix-monitoring.md).
+**Alert tests** - each problem was detected and closed automatically when the fault was removed:
+
+| Test | Result |
+|---|---|
+| Switch port to a user shut down (3 times) | "Link down" opened and auto-resolved each time |
+| WAN link on R1 shut down for ~5 min | "Link down", then the custom "Internet unreachable" 47 s later; both auto-resolved |
+| Automation host stopped | "Agent not available", then "host restarted"; both auto-resolved |
+
+![WAN link test](screenshots/test2-wan-resolved.png)
+
+During the WAN test the Zabbix dashboard itself became unreachable - it is accessed through that same
+link - while Zabbix kept recording the outage. That's the practical argument for out-of-band
+management. Full details in [configs/zabbix-monitoring.md](configs/zabbix-monitoring.md).
 
 ## Troubleshooting Highlights
 
-Nine real issues so far, each with symptom, investigation, root cause and fix in
+Ten real issues so far, each with symptom, investigation, root cause and fix in
 [docs/troubleshooting-log.md](docs/troubleshooting-log.md). Two favourites:
 
 - **No DHCP address on the WAN interface** - a static IP + ping test proved the fault was Layer 2,
@@ -94,6 +104,7 @@ hybrid-cloud-connectivity-lab/
 │   ├── SW1.cfg
 │   ├── end-hosts.md            (PC1, AUTO-HOST netplan and SSH client config)
 │   └── zabbix-monitoring.md    (Zabbix server, SNMPv3, agent, hosts)
+├── screenshots/                (Zabbix alert tests)
 └── docs/
     ├── troubleshooting-log.md
     └── design-decisions.md
@@ -105,7 +116,7 @@ hybrid-cloud-connectivity-lab/
 |---|---|---|
 | 0 | Environment preparation (EVE-NG, images, automation host) | Done |
 | 1 | On-prem network - R1, SW1, PC1, AUTO-HOST | Done |
-| Z | Monitoring - Zabbix 7.0 LTS, SNMPv3, agent 2 | In progress |
+| Z | Monitoring - Zabbix 7.0 LTS, SNMPv3, agent 2, alert tests | Done |
 | 2 | Azure foundation - VNet, subnets, NSG, VM (Azure CLI) | Planned |
 | 3 | Route-based IPsec IKEv2 tunnel (VTI, NAT-T) to Azure VPN Gateway | Planned |
 | 4 | Verification and failure testing | Planned |
